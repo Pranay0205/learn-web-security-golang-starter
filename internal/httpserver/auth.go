@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
 	"unicode/utf8"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
@@ -238,6 +239,25 @@ func (handler *authHandler) Logout(responseWriter http.ResponseWriter, request *
 		handler.internalError(responseWriter, request, err)
 		return
 	}
+	err := handler.accounts.RevokeSession(request.Context(), challengeToken)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	
+	currentSession, found , err := sessions.Current(request, handler.accounts)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	if found {
+		if err := handler.accounts.RevokeSession(request.Context(), currentSession.Session.Token); err != nil {
+				handler.internalError(responseWriter, request, err)
+				return
+		}
+	}
+
 	sessions.ClearCookie(responseWriter)
 	if challengeToken != "" {
 		clearTOTPLoginChallengeCookie(responseWriter)
