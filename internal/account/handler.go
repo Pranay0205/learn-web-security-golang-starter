@@ -61,6 +61,14 @@ func (handler *Handler) Page(responseWriter http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
+
+	handler.logger.Event("account_accessed", map[string]any{
+		"userId": current.Session.UserID,
+		"email": current.User.Email,
+		"expiresAt": current.Session.ExpiresAt,
+	})
+
+	
 	if err := handler.renderPage(responseWriter, http.StatusOK, current, ""); err != nil {
 		handler.internalError(responseWriter, request, err)
 	}
