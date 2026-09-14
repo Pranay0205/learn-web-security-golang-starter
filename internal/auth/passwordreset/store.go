@@ -2,15 +2,19 @@ package passwordreset
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/bootdotdev/learn-web-security/internal/database/dbgen"
 )
 
-const tokenTTL = 30 * 24 * time.Hour
+const tokenTTL = 15 * time.Minute
 
 type Token struct {
 	ID        int64
@@ -24,15 +28,19 @@ type Store struct {
 	database *sql.DB
 	queries  *dbgen.Queries
 	now      func() time.Time
+	random 	 io.Reader
 }
 
 func NewStore(database *sql.DB) *Store {
-	return &Store{database: database, queries: dbgen.New(database), now: time.Now}
+	return &Store{database: database, queries: dbgen.New(database), now: time.Now, random: rand.Reader}
 }
 
 func (store *Store) Create(ctx context.Context, userID int64) (Token, error) {
 	now := store.now().UTC()
-	value := fmt.Sprintf("reset-%d-%d", userID, now.UnixNano())
+	value, err := generatePasswordResetToken(store.random)
+	if err != nil {
+		return Token{},fmt.Errorf("generate password reset token %w", err)
+	}
 	expiresAt := now.Add(tokenTTL)
 	if err := store.queries.CreatePasswordResetToken(ctx, dbgen.CreatePasswordResetTokenParams{
 		UserID:    userID,
@@ -119,9 +127,20 @@ func (store *Store) ResetPassword(ctx context.Context, value, passwordHash strin
 }
 
 func hashToken(value string) string {
-	return value
+	h := sha256.Sum256([]byte(value))
+
+	return hex.EncodeToString(h[:])
+}
+
+func generatePasswordResetToken(value io.Reader) (string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := io.ReadFull(value, tokenBytes); err != nil {
+		return "", fmt.Errorf("failed generating password token: %w", err)
+	}
+	return hex.EncodeToString(tokenBytes), nil
 }
 
 func formatTimestamp(timestamp time.Time) string {
 	return timestamp.UTC().Format("2006-01-02T15:04:05.000Z")
 }
+
